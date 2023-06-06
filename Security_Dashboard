@@ -1,0 +1,71 @@
+-- Query to get these metrics
+select event_timestamp, user_name, client_ip, reported_client_type,
+reported_client_version,
+first_authentication_factor,
+second_authentication_factor,
+error_message
+from login_history ;
+
+-- Admin activity monitoring
+select user_name, role_name, query_text
+from query_history where execution_status = 'SUCCESS'
+and query_type = 'GRANT'
+order by end_time desc;
+
+-- Network policy
+select end_time, query_type, query_text, user_name, role_name
+from query_history where execution_status = 'SUCCESS'
+and query_type in ('CREATE_NETWORK_POLICY', 'ALTER_NETWORK_POLICY', 'DROP_NETWORK_POLICY')
+or (query_text ilike '% set network_policy%' or
+query_text like '% unset network_policy%')
+order by end_time desc;
+
+-- Monitor how a user has been authenticated:
+select user_name,
+first_authentication_factor,
+second_authentication_factor, count(*)
+from login_history
+where is_success = 'YES'
+group by user_name, first_authentication_factor,
+second_authentication_factor
+order by user_name, count(*) desc;
+
+-- IPs where the logins failures were happening the most.
+select distinct client_ip, count(client_ip)
+from login_history
+where is_success='NO'
+group by client_ip;
+
+-- Monitoring the long running sessions
+select end_time, query_type, query_text, user_name, role_name
+from query_history where execution_status = 'SUCCESS'
+and query_type = 'ALTER_SESSION' and query_text like '%client_session%'
+order by end_time desc;
+
+-- Monitoring the plain text user passwords :
+select end_time, query_type, query_text, user_name, role_name
+from query_history where execution_status = 'SUCCESS'
+and query_type = 'ALTER_USER' and query_text ilike '%alter user%set password%'
+order by end_time desc;
+
+-- Monitoring the data retention time:
+show parameters like '%data_retention_time_in_days%' in account;
+select table_name, table_schema, table_catalog, table_owner, table_type,
+retention_time from tables;
+
+-- Monitoring any changes to the periodic data rekeying:
+select end_time, query_type, query_text, user_name, role_name
+from query_history where execution_status = 'SUCCESS'
+and query_type = 'ALTER_ACCOUNT' and query_text ilike '%periodic_data_rekeying%'
+order by end_time desc;
+
+-- Monitoring Most recent logins without MFA
+select
+event_timestamp, user_name, client_ip, reported_client_type
+reported_client_version,
+first_authentication_factor,
+second_authentication_factor
+from login_history
+where first_authentication_factor = 'PASSWORD'
+and second_authentication_factor is null
+order by event_timestamp desc;
