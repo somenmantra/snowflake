@@ -1,0 +1,56 @@
+Step 1 :: Set up the event table.
+CREATE EVENT TABLE DEMO_DB_1.DEMO_SCHEMA_1.DEMO_EVENT_TBL;   --- Creating an event table.
+ALTER ACCOUNT SET EVENT_TABLE = DEMO_DB_1.DEMO_SCHEMA_1.DEMO_EVENT_TBL;  --- Associate event table with an account.
+ALTER SESSION SET LOG_LEVEL = INFO; --- Associate event table with an account.
+
+Step 2 :: Creating the procedure.
+
+CREATE OR REPLACE PROCEDURE DEMO_EVENT_TBL_PROC(OTPT VARCHAR)
+RETURNS VARCHAR NOT NULL
+LANGUAGE SQL
+EXECUTE AS OWNER
+AS
+$$
+DECLARE
+  dmlcount integer;
+  COL  varchar;
+  QUERY STRING;
+  counts int := 0;
+BEGIN
+  LET START_DATE TIMESTAMP := CURRENT_TIMESTAMP();
+  SYSTEM$LOG('INFO', 'Procedure started at: ' || TO_CHAR(START_DATE, 'YYYY-MM-DD HH24:mi:ss'));
+  --- To Perform deletes
+  QUERY := 'DELETE FROM DEMO_DB_1.DEMO_SCHEMA_1.CUSTOMER WHERE C_CUSTOMER_ID=''AAAAAAAABEMAMPEA''';
+  EXECUTE IMMEDIATE :QUERY;
+  SELECT $1 INTO counts FROM table(result_scan(last_query_id()));
+  IF (counts > 0) then
+      SYSTEM$LOG('INFO', 'Total number of records deleted are: ' || :counts);
+  END IF;  
+
+  
+  --- To perform inserts
+  QUERY := 'INSERT INTO DEMO_DB_1.DEMO_SCHEMA_1.BKP_CUSTOMER SELECT * FROM DEMO_DB_1.DEMO_SCHEMA_1.CUSTOMER LIMIT 10';
+  EXECUTE IMMEDIATE :QUERY;
+  SELECT $1 INTO counts FROM table(result_scan(last_query_id()));
+  IF (counts > 0) then
+      SYSTEM$LOG('INFO', 'Total number of records inserted are: ' || :counts);
+  END IF;  
+
+  --- To perform updates
+  QUERY := 'UPDATE DEMO_DB_1.DEMO_SCHEMA_1.CUSTOMER SET C_CUSTOMER_SK=''83627000'' WHERE C_CURRENT_HDEMO_SK>=''3320''';
+  EXECUTE IMMEDIATE :QUERY;
+  SELECT $1 INTO counts FROM table(result_scan(last_query_id()));
+  IF (counts > 0) then
+      SYSTEM$LOG('INFO', 'Total number of records updated are: ' || :counts);
+  END IF;  
+
+  
+  LET END_DATE TIMESTAMP := CURRENT_TIMESTAMP();
+  SYSTEM$LOG('INFO', 'Procedure completed at: ' || TO_CHAR(END_DATE, 'YYYY-MM-DD HH24:mi:ss'));
+  RETURN OTPT;
+END;
+$$
+;
+
+Step 2 :: Running the procedure.
+CALL DEMO_EVENT_TBL_PROC('A');
