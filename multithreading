@@ -1,0 +1,135 @@
+---- STEPS TO CREATE AN INTERNAL STAGE AND UNLOAD THE DATA AS CSV FROM THE TABLE. ----------
+CREATE TABLE DEMO_DB.DEMO_SCHEMA.CUSTOMER AS SELECT * FROM SNOWFLAKE_SAMPLE_DATA.TPCDS_SF100TCL.CUSTOMER;
+
+CREATE OR REPLACE STAGE my_demo_internal_stage_ver2
+  file_format = (type = 'CSV' FIELD_DELIMITER = ',' COMPRESSION=NONE );
+
+COPY INTO @my_demo_internal_stage_ver2/file.csv FROM (SELECT * FROM DEMO_DB.DEMO_SCHEMA.CUSTOMER LIMIT 9000000)
+SINGLE=TRUE
+OVERWRITE=TRUE
+HEADER=TRUE
+MAX_FILE_SIZE=5368709120
+
+list @my_demo_internal_stage_ver2;
+
+SELECT t.$1, t.$2 FROM @my_demo_internal_stage_ver2 t limit 10;
+
+	a. This is how the data is unloaded from Snowflake Staging table for the files which are > 100 MB
+	b. If during the COPY INTO constructs we do not specify the "SINGLE=TRUE", then all the files would be split into defaulat size as 16 MB and then get unloaded.
+
+
+------ STEPS TO THEN BRING THE FILE BACK TO THE LOCAL MACHINE. ----------
+
+For this we have to use the SnowSQL CLI, and then bring the data to the local environment.
+
+C:\Users\user>snowsql -a MNHNIWU-VA40074 -u somensep2023
+
+somensep2023#COMPUTE_WH@DEMO_DB.DEMO_SCHEMA>get @my_demo_internal_stage_ver2/file.csv file://demo/;
++----------+------------+------------+---------+
+| file     |       size | status     | message |
+|----------+------------+------------+---------|
+| file.csv | 1274063088 | DOWNLOADED |         |
++----------+------------+------------+---------+
+1 Row(s) produced. Time Elapsed: 1035.779s
+
+
+
+------ LOADING THE FILES FROM LOCAL TO AWS-S3 BUCKET  ------
+
+For this we have to use the AWS CLI. Since direct loading would be taking a lot of time.
+
+Step 1 :: Download the AWS CLI
+Step 2 :: Configure it within your local system by using the below commands
+
+PS C:\Users\user> aws configure
+AWS Access Key ID [****************7QFT]: AKIAWKIP6F35FNDK7SFZ
+AWS Secret Access Key [****************DFxi]:
+Default region name [ap-south-1]: ap-south-1
+Default output format [None]: None
+PS C:\Users\user>
+
+Step 3 :: Push the files from local to the AWS S3 bucket
+C:\Users\user\demo>
+C:\Users\user\demo>aws s3 cp C:/Users/user/demo/file.csv s3://demofilesplit/singlefile/
+upload: .\file.csv to s3://demofilesplit/singlefile/file.csv
+
+Additional Note(activities to be done in AWS side):
+a. Please create a user in IAM.
+b. Grant the necessary privileges directly to the user(the admin privileges).
+c. Go to the user profile and under "Security Credentials" -->"Access Keys" this is where
+   we get the Access Key and Access Id.
+
+
+
+
+
+------ CREATING THE STORAGE INTEGRATION OBJECT FOR ACCESS S3 FROM SNOWFLAKE  ------
+-- File format
+create or replace file format demo_csv_format
+type = csv field_delimiter = ',' skip_header = 1;
+
+-- Storage integration Object
+CREATE OR REPLACE STORAGE INTEGRATION demo_s3_storage_obj_int
+  TYPE = EXTERNAL_STAGE
+  STORAGE_PROVIDER = 'S3'
+  ENABLED = TRUE
+  STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::434362003194:role/demo_storage_int_role'
+  STORAGE_ALLOWED_LOCATIONS = ('s3://demofilesplit/singlefile/')
+
+--External stage
+create or replace stage demo_db.demo_schema.ext_stage_snow_demo 
+url="s3://demofilesplit/singlefile/" 
+STORAGE_INTEGRATION=demo_s3_storage_obj_int
+file_format = demo_csv_format;  
+  
+  
+
+-----------CREATING EC2 INSTANCE & ACCESSING S3 BUCKET FROM IT & RUNNING THE FILE SPITTER COMMAND------
+
+[ec2-user@ip-172-31-44-201 ~]$ cat demo_new_filesplit.sh
+S3_BUCKET=demofilesplit/singlefile
+FILENAME=filesingledemo.csv
+INFILE=s3://"${S3_BUCKET}"/"${FILENAME}"
+OUTFILE=s3://"${S3_BUCKET}"/"${FILENAME%%.*}"
+echo $S3_BUCKET, $FILENAME, $INFILE, $OUTFILE
+echo "Starting S3 File Splitter using line count of 1000000 lines"
+echo "Splitting file: "${INFILE}" ..."
+FILES=($(aws s3 cp "${INFILE}" - | split -d -l 1000000 --filter "aws s3 cp - \"${OUTFILE}_\$FILE.csv\" | echo \"\$FILE.csv\""))
+[ec2-user@ip-172-31-44-201 ~]$ 
+
+--Run the script:
+[ec2-user@ip-172-31-44-201 ~]$ sh demo_new_filesplit.sh
+demofilesplit/singlefile, filesingledemo.csv, s3://demofilesplit/singlefile/filesingledemo.csv, s3://demofilesplit/singlefile/filesingledemo
+Starting S3 File Splitter using line count of 1000000 lines
+Splitting file: s3://demofilesplit/singlefile/filesingledemo.csv ...
+[ec2-user@ip-172-31-44-201 ~]$
+
+a. Create a new EC2 instance
+b. Create an IAM role for EC2_USER and attach the admin privileges of S3 to that role.
+c. Assign that role to EC2 instance.
+d. Start using it.
+
+
+
+
+
+-----------RUN THE SINGLE & MULTIFILE LOAD AND CHECK THE THROUGHPUT------
+
+--Copy into command with single file
+COPY INTO DEMO_DB.DEMO_SCHEMA.CUSTOMER_TBL_FROM_SINGLE_FILE
+  FROM @demo_db.demo_schema.ext_stage_snow_demo/filesingledemo.csv
+  ON_ERROR=CONTINUE;
+
+Total Time Taken: 2 min 14 secs
+
+
+
+-- Loading the multiple files.
+COPY INTO DEMO_DB.DEMO_SCHEMA.CUSTOMER_TBL_FROM_MULTI_FILE
+FROM @ext_stage_snow_demo
+PATTERN='.*demo_x.*.csv' 
+ON_ERROR=CONTINUE
+
+Total Time Taken: 40 secs.
+
+
