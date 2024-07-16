@@ -1,0 +1,46 @@
+Scenarios creating::
+
+Let us take a 48 GB worth of table. The table name: SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.ORDERS
+create table ORDERS_DEMO_01 AS SELECT * FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.ORDERS;
+
+Scenario 1 ::
+Partition Pruning example:
+
+-- Example 1::
+select *
+from ORDERS_DEMO_01
+where o_orderdate = to_date('01-04-92','DD-MM-YY');
+
+
+-- Example 2::
+select *
+from ORDERS_DEMO_01
+where to_char(o_orderdate,'DD-MM-YY') = '01-04-92';
+
+
+
+
+
+
+Scenario 2 :: Clustering Depth & Overlaps::
+
+
+create table demo_customer_01 as select * from SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.CUSTOMER;
+
+select * from demo_customer_01 limit 10;
+
+select count(1) from demo_customer_01;
+
+
+create table demo_customer_02 like demo_customer_01 ;
+create table demo_customer_03 like demo_customer_01 ;
+create table demo_customer_04 like demo_customer_01 ;
+
+insert into demo_customer_02 select * from demo_customer_01;
+
+select * from demo_customer_02 limit 10;
+select C_CUSTKEY, C_NAME, C_ADDRESS, C_NATIONKEY, C_PHONE, C_ACCTBAL, C_MKTSEGMENT, C_COMMENT from demo_customer_02;
+
+SELECT SYSTEM$CLUSTERING_INFORMATION('demo_customer_02', '(C_CUSTKEY)');
+SELECT SYSTEM$CLUSTERING_INFORMATION('demo_customer_02', '(C_NATIONKEY)');
+
