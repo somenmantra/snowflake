@@ -1,0 +1,174 @@
+
+=========== SNS Set-up ==================
+
+-- Storage integration object. This is created now.
+CREATE OR REPLACE STORAGE INTEGRATION s3_storage_obj_int_forsnspipe
+  TYPE = EXTERNAL_STAGE
+  STORAGE_PROVIDER = 'S3'
+  ENABLED = TRUE
+  STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::434362003194:role/demorolesnspipe01'
+  STORAGE_ALLOWED_LOCATIONS = ('s3://mydemosnspipe01/');      
+
+
+DESCRIBE integration s3_storage_obj_int_forsnspipe;
+
+-- Creating the file format:
+create or replace file format demo_csv_format_sns
+type = csv field_delimiter = ',' skip_header = 1
+field_optionally_enclosed_by = '"'
+null_if = ('NULL', 'null') 
+empty_field_as_null = true;
+
+
+create or replace stage ext_stage_pipe_snsdemo url="s3://mydemosnspipe01/" 
+STORAGE_INTEGRATION=s3_storage_obj_int_forsnspipe
+file_format = demo_csv_format_sns;
+
+LIST @ext_stage_pipe_snsdemo;
+
+
+-- get the details from the ARN, by following the below command:
+select system$get_aws_sns_iam_policy('arn:aws:sns:us-east-1:434362003194:demosnsdatacloud');
+9
+
+--Creating the Snowpipe with SNS::
+CREATE OR REPLACE PIPE demomysnowpipesns 
+    AUTO_INGEST = TRUE 
+AWS_SNS_TOPIC='arn:aws:sns:us-east-1:434362003194:demosnsdatacloud' 
+AS
+COPY INTO DEMO_DB.DEMO_SCHEMA.QUARTERLY_SALES
+    FROM @ext_stage_pipe_snsdemo
+FILE_FORMAT = demo_csv_format_sns;
+
+
+describe pipe demomysnowpipesns;
+SELECT SYSTEM$PIPE_STATUS('demomysnowpipesns');
+
+
+ALTER PIPE demomysnowpipesns SET PIPE_EXECUTION_PAUSED = TRUE;
+ALTER PIPE demomysnowpipesns SET PIPE_EXECUTION_PAUSED = FALSE;
+
+
+ALTER SESSION SET TIMEZONE='UTC';
+SHOW PARAMETERS LIKE '%TIMEZONE%';
+
+
+
+
+
+
+
+
+
+
+
+
+=== SQS Set-up in Snowflake ===
+--- Creating a storage integration Object in Snowflake for S3 --
+
+Create a role within AWS with the name as :: demorolesnfpipe_01
+
+AWS Role ARN: arn:aws:iam::434362003194:role/demorolesnfpipe_01
+S3 bucket ARN ::  arn:aws:s3:::mydemosnowpipe01, this has to be represented as mydemosnowpipe01/
+
+
+CREATE OR REPLACE STORAGE INTEGRATION s3_storage_obj_int_forpipe
+  TYPE = EXTERNAL_STAGE
+  STORAGE_PROVIDER = 'S3'
+  ENABLED = TRUE
+  STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::434362003194:role/demorolesnfpipe_01'
+  STORAGE_ALLOWED_LOCATIONS = ('s3://mydemosnowpipe01/');      
+
+-- Steps to be executed using the "accountadmin role" in Snowflake
+-- You can even specify the exact path by having S3 prefixes and multiple paths as well, something like 
+   -- STORAGE_ALLOWED_LOCATIONS = ('s3://mybucket1/path1/', 's3://mybucket2/path2/');
+
+
+DESCRIBE integration s3_storage_obj_int_forpipe;
+
+
+
+create or replace file format demo_csv_format
+type = csv field_delimiter = ',' skip_header = 1
+field_optionally_enclosed_by = '"'
+null_if = ('NULL', 'null') 
+empty_field_as_null = true;
+
+
+create or replace stage ext_stage_pipe_demo url="s3://mydemosnowpipe01/" 
+STORAGE_INTEGRATION=s3_storage_obj_int_forpipe
+file_format = demo_csv_format;
+
+
+LIST @ext_stage_pipe_demo;
+select * from DEMO_DB.DEMO_SCHEMA.QUARTERLY_SALES;
+
+
+--Creation of the Snowpipes --
+
+CREATE OR REPLACE PIPE demomysnowpipesqs 
+    AUTO_INGEST = TRUE AS
+COPY INTO DEMO_DB.DEMO_SCHEMA.QUARTERLY_SALES
+    FROM @ext_stage_pipe_demo
+FILE_FORMAT = demo_csv_format;
+
+
+-- Notification channel --
+DESCRIBE PIPE demomysnowpipesqs;
+
+
+SELECT SYSTEM$PIPE_STATUS('demomysnowpipesqs');
+
+SELECT * FROM DEMO_DB.DEMO_SCHEMA.QUARTERLY_SALES;
+
+
+--Snowpipe Governance --
+SHOW PIPES;
+DESCRIBE PIPE demomysnowpipesqs;
+SELECT SYSTEM$PIPE_STATUS('demomysnowpipesqs');
+ALTER PIPE demomysnowpipesqs SET PIPE_EXECUTION_PAUSED = TRUE;
+ALTER PIPE MYPIPE SET PIPE_EXECUTION_PAUSED = FALSE;
+DROP PIPE demomysnowpipesqs;
+
+select current_timestamp();
+show parameters like 'TIMEZONE';
+
+
+SELECT
+    PIPE_ID,
+    PIPE_NAME AS NAME,
+    PIPE_SCHEMA_ID AS SCHEMA_ID,
+    PIPE_SCHEMA AS SCHEMA_NAME,
+    PIPE_CATALOG_ID AS DATABASE_ID,
+    PIPE_CATALOG AS DATABASE_NAME,
+    IS_AUTOINGEST_ENABLED,
+    NOTIFICATION_CHANNEL_NAME,
+    PIPE_OWNER,
+    DEFINITION,
+    CREATED,
+    LAST_ALTERED,
+    COMMENT,
+    PATTERN,
+    DELETED,
+    OWNER_ROLE_TYPE
+FROM SNOWFLAKE.ACCOUNT_USAGE.PIPES;
+
+SELECT
+    START_TIME,
+    PIPE_ID,
+    COALESCE(PIPE_NAME, 'External table refreshes') AS NAME, -- External table refreshes do not have a pipe name
+    FILES_INSERTED,
+    BYTES_INSERTED,
+    CREDITS_USED AS TOTAL_CREDITS,
+    0.06 * FILES_INSERTED / 1000 AS FILES_CREDITS, -- 0.06 credits per 1000 files
+    TOTAL_CREDITS - FILES_CREDITS AS COMPUTE_CREDITS
+FROM SNOWFLAKE.ACCOUNT_USAGE.PIPE_USAGE_HISTORY
+ORDER BY START_TIME DESC;
+
+
+
+SELECT * FROM 
+SNOWFLAKE.ACCOUNT_USAGE.PIPE_USAGE_HISTORY
+ORDER BY START_TIME DESC;
+
+
