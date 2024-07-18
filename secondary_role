@@ -1,0 +1,100 @@
+--- Worksheet 1 ---
+create database DEMO_DB_DEV;
+create schema STAGING_SRC1;
+create schema STAGING_SRC2;
+
+use schema STAGING_SRC1;
+
+CREATE OR REPLACE TABLE src1_quarterly_sales(
+  sales_id INT, 
+  amount INT, 
+  quarter TEXT)
+  AS SELECT * FROM VALUES
+    (1, 10000, '2023_Q1'),
+    (1, 400, '2023_Q1'),
+    (2, 4500, '2023_Q1'),
+    (2, 35000, '2023_Q1'),
+    (1, 5000, '2023_Q2'),
+    (1, 3000, '2023_Q2'),
+    (2, 200, '2023_Q2'),
+    (2, 90500, '2023_Q2'),
+    (1, 6000, '2023_Q3'),
+    (1, 5000, '2023_Q3'),
+    (2, 2500, '2023_Q3'),
+    (2, 9500, '2023_Q3'),
+    (1, 8000, '2023_Q4'),
+    (1, 10000, '2023_Q4'),
+    (2, 800, '2023_Q4'),
+    (2, 4500, '2023_Q4');
+
+
+use schema staging_src2;
+CREATE OR REPLACE TABLE src2_quarterly_sales(
+  sales_id INT, 
+  amount INT, 
+  quarter TEXT)
+  AS SELECT * FROM VALUES
+    (1, 10000, '2023_Q1'),
+    (1, 400, '2023_Q1'),
+    (2, 4500, '2023_Q1'),
+    (2, 35000, '2023_Q1'),
+    (1, 5000, '2023_Q2'),
+    (1, 3000, '2023_Q2'),
+    (2, 200, '2023_Q2'),
+    (2, 90500, '2023_Q2'),
+    (1, 6000, '2023_Q3'),
+    (1, 5000, '2023_Q3'),
+    (2, 2500, '2023_Q3'),
+    (2, 9500, '2023_Q3'),
+    (1, 8000, '2023_Q4'),
+    (1, 10000, '2023_Q4'),
+    (2, 800, '2023_Q4'),
+    (2, 4500, '2023_Q4');
+
+
+--- Now let us create some roles and give grants to the users -- 
+
+-- Step 1 :: Creating roles -- 
+USE ROLE SECURITYADMIN;
+CREATE ROLE RL1_DEV_SRC1_READ;
+CREATE ROLE RL2_DEV_SRC2_READ;
+
+-- Step 2 :: Creating users -- 
+USE ROLE USERADMIN;
+CREATE USER DEMO_TEST_USER password='July202417' default_warehouse=compute_wh default_role=RL_DEV_SRC1_READ;
+
+
+-- Step 3: Grant Roles to the User --
+USE ROLE SECURITYADMIN;
+GRANT ROLE RL1_DEV_SRC1_READ TO USER DEMO_TEST_USER;
+GRANT ROLE RL2_DEV_SRC2_READ TO USER DEMO_TEST_USER;
+
+
+-- Step 4: Grant Warehouse to the User
+GRANT USAGE ON WAREHOUSE COMPUTE_WH TO ROLE RL1_DEV_SRC1_READ;
+GRANT USAGE ON WAREHOUSE COMPUTE_WH TO ROLE RL2_DEV_SRC2_READ;
+
+-- Step 5: Grant necessary privileges on the respective tables under the schema to the roles
+GRANT SELECT ON DEMO_DB_DEV.STAGING_SRC1.SRC1_QUARTERLY_SALES TO ROLE RL1_DEV_SRC1_READ;
+GRANT SELECT ON DEMO_DB_DEV.STAGING_SRC2.SRC2_QUARTERLY_SALES TO ROLE RL2_DEV_SRC2_READ;
+
+GRANT USAGE ON SCHEMA DEMO_DB_DEV.STAGING_SRC1 TO ROLE RL1_DEV_SRC1_READ;
+GRANT USAGE ON DATABASE DEMO_DB_DEV TO ROLE RL1_DEV_SRC1_READ;
+
+
+GRANT USAGE ON SCHEMA DEMO_DB_DEV.STAGING_SRC2 TO ROLE RL2_DEV_SRC2_READ;
+GRANT USAGE ON DATABASE DEMO_DB_DEV TO ROLE RL2_DEV_SRC2_READ;
+
+
+-- We are now all good to do the testing.
+
+
+
+
+
+
+
+
+
+== Worksheet 2 ==
+Change to the new user and start doing the testing.
