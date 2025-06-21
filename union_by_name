@@ -1,0 +1,52 @@
+"UNION BY NAME" In Snowflake 
+*/
+
+
+create database demo_db;
+create schema demo_schema;
+
+CREATE OR REPLACE TABLE Employee (
+    id INT,
+    name VARCHAR(50),
+    department VARCHAR(50),
+    role VARCHAR(50)
+);
+
+CREATE OR REPLACE TABLE Contractor (
+    id INT,
+    name VARCHAR(50),
+    department VARCHAR(50),
+    role VARCHAR(50)
+);
+
+//ALTER TABLE Contractor DROP COLUMN role;
+
+INSERT INTO Employee (id, name, department, role) VALUES
+(1, 'Alice', 'Engineering', 'Software Engineer'),
+(2, 'Bob', 'Marketing', 'Content Strategist'),
+(3, 'Charlie', 'Finance', 'Accountant');
+
+INSERT INTO Contractor (id, name, department, role) VALUES
+(101, 'David', 'Engineering', 'Contract Developer'),
+(102, 'Eve', 'HR', 'Recruiter'),
+(103, 'Frank', 'Finance', 'Consultant');
+
+
+ALTER TABLE Contractor DROP COLUMN role;
+
+SELECT id, name FROM Employee
+UNION BY NAME
+SELECT name, id FROM Contractor;
+
+
+SELECT * FROM Employee
+UNION BY NAME
+SELECT * FROM Contractor;
+
+
+/*
+1. Allows to perform union based on column names
+regardless of their order.
+2. Works even if the presence of extra columns.
+*/
+
